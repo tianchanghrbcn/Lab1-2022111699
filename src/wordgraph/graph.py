@@ -1,7 +1,20 @@
 from __future__ import annotations
-from collections import defaultdict, Counter
-from typing import Dict, List, Tuple, Optional
-import os, tempfile, webbrowser, math, shutil, subprocess
+
+import math
+import os
+import shutil
+import subprocess
+import tempfile
+import webbrowser
+from collections import Counter, defaultdict
+from typing import Dict, List, Optional, Tuple
+from itertools import pairwise
+
+import matplotlib.pyplot as plt
+from matplotlib.patches import FancyArrowPatch
+
+from .utils import red, yellow
+
 
 # -------------------------------------------------------------
 # 确保 dot.exe 能被找到
@@ -9,11 +22,12 @@ import os, tempfile, webbrowser, math, shutil, subprocess
 def _ensure_graphviz():
     if shutil.which("dot"):
         return
-    for p in (r"C:\Program Files\Graphviz\bin",
-              r"C:\Program Files (x86)\Graphviz\bin"):
+    for p in (r"C:\Program Files\Graphviz\bin", r"C:\Program Files (x86)\Graphviz\bin"):
         if os.path.exists(os.path.join(p, "dot.exe")):
             os.environ["PATH"] += os.pathsep + p
             return
+
+
 _ensure_graphviz()
 
 try:
@@ -21,16 +35,13 @@ try:
 except ImportError:
     pydot = None
 
-import matplotlib.pyplot as plt
-from matplotlib.patches import FancyArrowPatch
-from itertools import pairwise
-from .utils import yellow, red
 
 # ---------- 权重 → 颜色 + 线宽 ----------
 def _edge_style(w: int, w_max: int) -> Tuple[str, float]:
     palette = ["#a6cee3", "#66b2d6", "#4292c3", "#2176b9", "#1f78b4"]
-    idx     = min(4, int((w - 1) / max(1, w_max) * 4))
-    return palette[idx], 1.0 + 0.5 * idx   # color, penwidth
+    idx = min(4, int((w - 1) / max(1, w_max) * 4))
+    return palette[idx], 1.0 + 0.5 * idx  # color, penwidth
+
 
 # =============================================================
 class DirectedGraph:
@@ -63,16 +74,21 @@ class DirectedGraph:
     # ---------- 打印 ----------
     def pretty_print(self, show_weight=False):
         for s in sorted(self.adj):
-            line = ", ".join(f"{d}({w})" if show_weight else d
-                             for d, w in self.adj[s].items())
+            line = ", ".join(
+                f"{d}({w})" if show_weight else d for d, w in self.adj[s].items()
+            )
             print(f"{s:>15}  ->  {line}")
 
     # =========================================================
     # 绘图主入口
     # =========================================================
-    def draw(self, *, save: Optional[str] = None,
-             path: List[str] | None = None,
-             interactive: bool = True):
+    def draw(
+        self,
+        *,
+        save: Optional[str] = None,
+        path: List[str] | None = None,
+        interactive: bool = True,
+    ):
         """
         save  : 指定文件名前缀（不含扩展）; None = 交互模式时写临时 eps
         path  : 最短路径节点序列，高亮
@@ -94,8 +110,13 @@ class DirectedGraph:
     # ---------------------------------------------------------
     def _draw_graphviz(self, save, path, interactive) -> bool:
         try:
-            dot = pydot.Dot(graph_type='digraph', rankdir='LR',
-                            splines='ortho', nodesep="0.4", ranksep="0.5")
+            dot = pydot.Dot(
+                graph_type="digraph",
+                rankdir="LR",
+                splines="ortho",
+                nodesep="0.4",
+                ranksep="0.5",
+            )
         except Exception as e:
             print(red(f"[!] pydot 创建失败: {e}"))
             return False
@@ -105,7 +126,7 @@ class DirectedGraph:
             dot.add_node(pydot.Node(v, shape="circle", fontsize="10"))
 
         hilite = {(a, b) for a, b in zip(path, path[1:])} if path else set()
-        w_max  = max((w for nb in self.adj.values() for w in nb.values()), default=1)
+        w_max = max((w for nb in self.adj.values() for w in nb.values()), default=1)
 
         # 边
         for s, nb in self.adj.items():
@@ -113,9 +134,11 @@ class DirectedGraph:
                 if (s, d) in hilite:
                     color, pw = "red", "3"
                 else:
-                    color, pw = _edge_style(w, w_max); pw = str(pw)
-                dot.add_edge(pydot.Edge(s, d, color=color,
-                                        penwidth=pw, arrowsize="0.6"))
+                    color, pw = _edge_style(w, w_max)
+                    pw = str(pw)
+                dot.add_edge(
+                    pydot.Edge(s, d, color=color, penwidth=pw, arrowsize="0.6")
+                )
 
         # 输出 eps
         if save is None:
@@ -136,8 +159,12 @@ class DirectedGraph:
         if shutil.which("epstopdf"):
             pdf_path = os.path.splitext(eps_path)[0] + ".pdf"
             try:
-                subprocess.run(["epstopdf", eps_path, "--outfile=" + pdf_path],
-                               check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                subprocess.run(
+                    ["epstopdf", eps_path, "--outfile=" + pdf_path],
+                    check=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
                 print(yellow(f"[+] 已生成 PDF → {pdf_path}"))
             except Exception as e:
                 print(red(f"[!] epstopdf 转换失败: {e}"))
@@ -160,17 +187,19 @@ class DirectedGraph:
 
         nodes = sorted(self.nodes())
         n = len(nodes)
-        pos = {v: (math.cos(2 * math.pi * i / n),
-                   math.sin(2 * math.pi * i / n))
-               for i, v in enumerate(nodes)}
+        pos = {
+            v: (math.cos(2 * math.pi * i / n), math.sin(2 * math.pi * i / n))
+            for i, v in enumerate(nodes)
+        }
         w_max = max((w for nb in self.adj.values() for w in nb.values()), default=1)
 
         fig, ax = plt.subplots(figsize=(6, 6))
-        ax.axis('off'); ax.set_aspect('equal')
+        ax.axis("off")
+        ax.set_aspect("equal")
 
         for v, (x, y) in pos.items():
-            ax.plot(x, y, 'o', ms=8)
-            ax.text(x, y, v, ha='center', va='center', fontsize=8)
+            ax.plot(x, y, "o", ms=8)
+            ax.text(x, y, v, ha="center", va="center", fontsize=8)
 
         for s, nb in self.adj.items():
             x0, y0 = pos[s]
@@ -179,24 +208,39 @@ class DirectedGraph:
                     continue
                 x1, y1 = pos[d]
                 color, pw = _edge_style(w, w_max)
-                ax.add_patch(FancyArrowPatch((x0, y0), (x1, y1),
-                                             arrowstyle='-|>', mutation_scale=10,
-                                             linewidth=pw, color=color,
-                                             alpha=0.9,
-                                             connectionstyle="arc3,rad=0.2"))
+                ax.add_patch(
+                    FancyArrowPatch(
+                        (x0, y0),
+                        (x1, y1),
+                        arrowstyle="-|>",
+                        mutation_scale=10,
+                        linewidth=pw,
+                        color=color,
+                        alpha=0.9,
+                        connectionstyle="arc3,rad=0.2",
+                    )
+                )
 
         if path and len(path) > 1:
             for a, b in pairwise(path):
-                xa, ya = pos[a]; xb, yb = pos[b]
-                ax.add_patch(FancyArrowPatch((xa, ya), (xb, yb),
-                                             arrowstyle='-|>', mutation_scale=16,
-                                             linewidth=3, color='red',
-                                             connectionstyle="arc3,rad=0.2"))
+                xa, ya = pos[a]
+                xb, yb = pos[b]
+                ax.add_patch(
+                    FancyArrowPatch(
+                        (xa, ya),
+                        (xb, yb),
+                        arrowstyle="-|>",
+                        mutation_scale=16,
+                        linewidth=3,
+                        color="red",
+                        connectionstyle="arc3,rad=0.2",
+                    )
+                )
 
         if save:
             root, _ = os.path.splitext(save)
             png = root + ".png"
-            plt.savefig(png, bbox_inches='tight')
+            plt.savefig(png, bbox_inches="tight")
             print(yellow(f"[+] 备用 PNG → {png}"))
 
         if interactive:
